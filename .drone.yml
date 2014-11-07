@@ -1,0 +1,12 @@
+image: bradrydzewski/go:1.3
+cache:
+  - /go/src/github.com/coreos/go-etcd/etcd
+  - /go/src/github.com/couchbaselabs/go-couchbase
+script:
+  - go get -u github.com/coreos/go-etcd/etcd
+  - go get -u github.com/couchbaselabs/go-couchbase
+  - go build
+notify:
+  email:
+    recipients:
+      - anielkis@gmail.com

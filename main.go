@@ -6,45 +6,23 @@ import (
 	"fmt"
 	"github.com/DimShadoWWW/cman/node"
 	"github.com/coreos/go-etcd/etcd"
-	"github.com/couchbaselabs/go-couchbase"
 	"log"
 	"os"
 	"os/signal"
-	"regexp"
 	"strconv"
 	"strings"
 )
 
 type ActionCfg struct {
-	Key    string
-	Add    string
-	Del    string
-	Create string
-	Remove string
+	Key string
+	Add string
+	Del string
 }
 
 type Actions struct {
 	Action    ActionCfg
 	Databases []string       // Active databases
 	Nodes     node.NodeSlice // Active Nodes
-}
-
-func CouchDBCreate(dbname string, nodeAddress string, nodePort int, serverAddress string, serverPort int) error {
-	c, err := couchbase.Connect("http://" + nodeAddress + ":" + strconv.Itoa(nodePort) + "/")
-	if err != nil {
-		log.Fatalf("Error connecting:  %v", err)
-	}
-
-	pool, err := c.GetPool("default")
-	if err != nil {
-		log.Fatalf("Error getting pool:  %v", err)
-	}
-
-	bucket, err := pool.GetBucket("dbname")
-	if err != nil {
-		log.Fatalf("Error getting bucket:  %v", err)
-	}
-
 }
 
 func run(command string, dbname string, nodeAddress string, nodePort int, serverAddress string, serverPort int) (string, error) {
@@ -63,160 +41,17 @@ func run(command string, dbname string, nodeAddress string, nodePort int, server
 	return cmd, nil
 }
 
-func processUpdate(r etcd.Response) error {
+func processUpdate(r etcd.Response) {
 
 	log.Println("Processing update")
 
 	var entry node.Node
 
-	configRegexp, err := regexp.Compile(etcdKeyPrefix + "/config/([a-zA-Z0-9_]+)")
-	if err == nil {
-		return err
-	}
-
-	databasesRegexp, err := regexp.Compile(etcdKeyPrefix + "/config/([a-zA-Z0-9_]+)/databases/([a-zA-Z0-9_]+)")
-	if err == nil {
-		return err
-	}
-
 	// If it was inside the configuration
-	if configRegexp.MatchString(r.Node.Key) == true {
+	if strings.Contains(r.Node.Key, etcdKeyPrefix) {
 		log.Println("Configuration update")
 		log.Printf("Update: %#v\n", r.Node)
 
-		matches := configRegexp.FindAllStringSubmatch(r.Node.Key, -1)
-		actionName := matches[0][1]
-
-		// Action removed
-		if r.Node.Key == etcdKeyPrefix+"/config/"+actionName && r.Node.Value == "" {
-			log.Printf("Action %s removed\n", actionName)
-			delete(Registry, actionName)
-			return nil
-		}
-
-		if actionName != "" {
-			// action config
-			switch {
-			case r.Node.Key == etcdKeyPrefix+"/config/"+actionName+"/config":
-				// Load Config
-				resp, err := client.Get(etcdKeyPrefix+"/config/"+actionName+"/config", false, false)
-				// Check if it is connected or add the default config if
-				if err != nil {
-					log.Println("Error: config of action ", etcdKeyPrefix+"/config/"+actionName+"/config", " doesn't exist")
-					return err
-				}
-
-				n := ActionCfg{}
-
-				err = json.Unmarshal([]byte(resp.Node.Value), &n)
-				if err != nil {
-					log.Println("Error: config of action ", action.Key+"/config", " failed to unmarchal.")
-					return err
-				}
-
-				Registry[actionName].Action = n
-			case strings.Contains(r.Node.Key, etcdKeyPrefix+"/config/"+actionName+"/databases/"):
-				// Read databases
-				resp, err = client.Get(action.Key+"/databases", true, true)
-				// Check if it is connected or add the default config if
-				if err != nil {
-					log.Println("Error: there is no databases configured for action ", action.Key)
-					continue
-				}
-				var databases []string
-				for _, db := range resp.Node.Nodes {
-					if db.Dir == false {
-						databases = append(databases, nodeName(db))
-					}
-				}
-
-				Registry[actionName] = Actions{
-					Databases: databases, // Active databases
-				}
-
-				databaseName := nodeName(r.Node.Key)
-
-				if r.Node.Value == "" {
-					for _, h := range Registry[actionName].Nodes {
-						log.Println("Removing database ", databaseName, " from server ", node.Host+":"+strconv.Itoa(node.Port))
-						cmd, err := run(v.Action.Del, dbname, bn.Host, bn.Port, node.Host, node.Port)
-						if err != nil {
-							log.Printf(r.Node.Value)
-							log.Printf(err.Error())
-						}
-					}
-				}
-
-			}
-			// if strings.Contains(r.Node.Key, etcdKeyPrefix+"/config/"+actionName+"/config") {
-			// 	nodes, err := getNodes(v.Action.Key)
-			// 	if err == nil {
-			// 		// keeping node list before the update to compare
-			// 		beforeNodes := make(node.NodeSlice)
-			// 		for kn, vn := range v.Nodes {
-			// 			beforeNodes[kn] = vn
-			// 		}
-
-			// 		if r.Node.Value == "" {
-			// 			if v.Nodes.HasKey(r.Node.Key) {
-			// 				delete(v.Nodes, r.Node.Key)
-			// 				log.Printf("Removed: %s\n", r.Node.Key)
-			// 				log.Printf("Left nodes: %v\n", v.Nodes)
-			// 				if len(beforeNodes) > 1 {
-			// 					for _, bn := range beforeNodes {
-			// 						if bn.Key == r.Node.Key {
-			// 							for _, node := range v.Nodes {
-			// 								if bn.Host != node.Host || bn.Port != node.Port {
-			// 									for _, dbname := range v.Databases {
-			// 										log.Println("Removing node", bn.Host+":"+strconv.Itoa(bn.Port), " from server ", node.Host+":"+strconv.Itoa(node.Port))
-			// 										cmd, err := run(v.Action.Del, dbname, bn.Host, bn.Port, node.Host, node.Port)
-			// 										if err != nil {
-			// 											log.Printf(r.Node.Value)
-			// 											log.Printf(err.Error())
-			// 										}
-			// 										log.Println(cmd)
-			// 									}
-			// 								}
-			// 							}
-			// 							break
-			// 						}
-			// 					}
-			// 				}
-			// 			} else {
-			// 				log.Println("Slice hasn't that key")
-			// 			}
-			// 		} else {
-			// 			log.Printf("Adding: %s\n", r.Node.Value)
-			// 			if len(nodes) > 1 {
-			// 				for _, node := range nodes {
-			// 					for _, bn := range v.Nodes {
-			// 						if bn.Host != node.Host || bn.Port != node.Port {
-			// 							for _, dbname := range v.Databases {
-			// 								log.Println("Adding node", bn.Host+":"+strconv.Itoa(bn.Port), " to server ", node.Host+":"+strconv.Itoa(node.Port))
-			// 								cmd, err := run(v.Action.Add, dbname, bn.Host, bn.Port, node.Host, node.Port)
-			// 								if err != nil {
-			// 									log.Printf(r.Node.Value)
-			// 									log.Printf(err.Error())
-			// 									panic(err)
-			// 								}
-			// 								log.Println(cmd)
-			// 							}
-			// 						}
-			// 					}
-			// 				}
-			// 			}
-			// 			err := json.Unmarshal([]byte(r.Node.Value), &entry)
-			// 			if err != nil {
-			// 				log.Println("Failed to read json '", r.Node.Value, "' error: ", err.Error())
-			// 			}
-			// 			v.Nodes[r.Node.Key] = node.Node{Port: entry.Port, Host: entry.Host, Key: r.Node.Key}
-			// 		}
-			// 	} else {
-			// 		log.Println("Error retrieving node list for key '", parentNodeKey(r.Node.Key), "': ", err.Error())
-			// 		continue
-			// 	}
-			// }
-		}
 	} else {
 		// It was a host update
 
@@ -285,7 +120,9 @@ func processUpdate(r etcd.Response) error {
 							}
 							err := json.Unmarshal([]byte(r.Node.Value), &entry)
 							if err != nil {
-								log.Println("Failed to read json '", r.Node.Value, "' error: ", err.Error())
+								log.Printf(r.Node.Value)
+								log.Printf(err.Error())
+								panic(err)
 							}
 							v.Nodes[r.Node.Key] = node.Node{Port: entry.Port, Host: entry.Host, Key: r.Node.Key}
 						}

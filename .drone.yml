@@ -5,6 +5,7 @@ cache:
 script:
   - go get -u github.com/coreos/go-etcd/etcd
   - go get -u github.com/couchbaselabs/go-couchbase
+  - go test
   - go build
 notify:
   email:

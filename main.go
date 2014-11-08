@@ -8,9 +8,11 @@ import (
 	"github.com/DimShadoWWW/cman/node"
 	"github.com/codeskyblue/go-sh"
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/deckarep/golang-set"
 	"log"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -25,7 +27,7 @@ type ActionCfg struct {
 
 type Actions struct {
 	Action    ActionCfg
-	Databases []string       // Active databases
+	Databases mapset.Set     // Active databases
 	Nodes     node.NodeSlice // Active Nodes
 }
 
@@ -55,17 +57,134 @@ func cmd(command string, data CmdSubstitutions) (bytes.Buffer, error) {
 	return script, nil
 }
 
-func processUpdate(r etcd.Response) {
+func processUpdate(r etcd.Response) error {
 
 	log.Println("Processing update")
 
 	var entry node.Node
 
+	configRegexp, err := regexp.Compile(etcdKeyPrefix + "/config/([a-zA-Z0-9_]+)")
+	if err == nil {
+		return err
+	}
+
+	// databasesRegexp, err := regexp.Compile(etcdKeyPrefix + "/config/([a-zA-Z0-9_]+)/databases/([a-zA-Z0-9_]+)")
+	// if err == nil {
+	// 	return err
+	// }
+
 	// If it was inside the configuration
-	if strings.Contains(r.Node.Key, etcdKeyPrefix) {
+	if configRegexp.MatchString(r.Node.Key) == true {
 		log.Println("Configuration update")
 		log.Printf("Update: %#v\n", r.Node)
 
+		matches := configRegexp.FindAllStringSubmatch(r.Node.Key, -1)
+		actionName := matches[0][1]
+
+		// Action removed
+		if r.Node.Key == etcdKeyPrefix+"/config/"+actionName && r.Node.Value == "" {
+			log.Printf("Action %s removed\n", actionName)
+			delete(Registry, actionName)
+			return nil
+		}
+
+		if actionName != "" {
+			// action config
+			switch {
+			case r.Node.Key == etcdKeyPrefix+"/config/"+actionName+"/config":
+				// Load Config
+				resp, err := client.Get(etcdKeyPrefix+"/config/"+actionName+"/config", false, false)
+				// Check if it is connected or add the default config if
+				if err != nil {
+					log.Println("Error: config of action ", etcdKeyPrefix+"/config/"+actionName+"/config", " doesn't exist")
+					return err
+				}
+
+				n := ActionCfg{}
+
+				err = json.Unmarshal([]byte(resp.Node.Value), &n)
+				if err != nil {
+					log.Println("Error: config of action ", resp.Node.Key+"/config", " failed to unmarchal.")
+					return err
+				}
+
+				Registry[actionName].Action = n
+
+			case strings.Contains(r.Node.Key, etcdKeyPrefix+"/config/"+actionName+"/databases/"):
+				// Read databases
+				resp, err := client.Get(etcdKeyPrefix+"/config/"+actionName+"/databases", true, true)
+				// Check if it is connected or add the default config if
+				if err != nil {
+					log.Println("Error: there is no databases configured for action ", resp.Node.Key)
+				}
+
+				databaseName := nodeName(r.Node)
+
+				var NList node.NodeList
+
+				for k := range Registry[actionName].Nodes {
+					NList = append(NList, k)
+				}
+
+				if r.Node.Value != "" {
+					Registry[actionName].Databases.Add(databaseName)
+
+					for comb := range node.Permutations(NList, select_num, buf) {
+						lh := Registry[actionName].Nodes[comb[0]] // local CouchDB
+						rh := Registry[actionName].Nodes[comb[1]] // remote CouchDB for syncronization
+						log.Println("Adding database ", databaseName, " to server ", lh.Host+":"+strconv.Itoa(lh.Port))
+						data := CmdSubstitutions{
+							DATABASE:    databaseName,
+							SERVER_IP:   lh.Host,
+							SERVER_PORT: strconv.Itoa(lh.Port),
+							HOSTNAME:    rh.Host,
+							PORT:        strconv.Itoa(rh.Port),
+						}
+						command, err := cmd(Registry[actionName].Action.Add, data)
+						if err != nil {
+							log.Printf(r.Node.Value)
+							log.Printf(err.Error())
+						}
+						out, err := run(command)
+						if err != nil {
+							log.Println("Command failed:")
+							log.Printf("exec: %s\n", command.String())
+							log.Println(out)
+							log.Println(err.Error())
+						}
+					}
+				} else {
+					Registry[actionName].Databases.Remove(databaseName)
+
+					for comb := range node.Permutations(NList, select_num, buf) {
+						lh := Registry[actionName].Nodes[comb[0]] // local CouchDB
+						rh := Registry[actionName].Nodes[comb[1]] // remote CouchDB with syncronization
+
+						log.Println("Removing database ", databaseName, " from server ", lh.Host+":"+strconv.Itoa(lh.Port))
+						data := CmdSubstitutions{
+							DATABASE:    databaseName,
+							SERVER_IP:   lh.Host,
+							SERVER_PORT: strconv.Itoa(lh.Port),
+							HOSTNAME:    rh.Host,
+							PORT:        strconv.Itoa(rh.Port),
+						}
+						command, err := cmd(Registry[actionName].Action.Del, data)
+						if err != nil {
+							log.Printf(r.Node.Value)
+							log.Printf(err.Error())
+						}
+						out, err := run(command)
+						if err != nil {
+							log.Println("Command failed:")
+							log.Printf("exec: %s\n", command.String())
+							log.Println(out)
+							log.Println(err.Error())
+						}
+					}
+				}
+
+			}
+		}
 	} else {
 		// It was a host update
 
@@ -94,24 +213,24 @@ func processUpdate(r etcd.Response) {
 										if bn.Key == r.Node.Key {
 											for _, node := range v.Nodes {
 												if bn.Host != node.Host || bn.Port != node.Port {
-													for _, dbname := range v.Databases {
+													for dbname := range v.Databases.Iter() {
 														log.Println("Removing node", bn.Host+":"+strconv.Itoa(bn.Port), " from server ", node.Host+":"+strconv.Itoa(node.Port))
 														data := CmdSubstitutions{
-															DATABASE:    dbname,
+															DATABASE:    dbname.(string),
 															SERVER_IP:   node.Host,
 															SERVER_PORT: strconv.Itoa(node.Port),
 															HOSTNAME:    bn.Host,
 															PORT:        strconv.Itoa(bn.Port),
 														}
-														cmd, err := cmd(v.Action.Del, data)
+														command, err := cmd(v.Action.Del, data)
 														if err != nil {
 															log.Printf(r.Node.Value)
 															log.Printf(err.Error())
 														}
-														out, err := run(cmd)
+														out, err := run(command)
 														if err != nil {
 															log.Println("Command failed:")
-															log.Printf("exec: %s\n", cmd.String())
+															log.Printf("exec: %s\n", command.String())
 															log.Println(out)
 															log.Println(err.Error())
 														}
@@ -131,25 +250,25 @@ func processUpdate(r etcd.Response) {
 								for _, node := range nodes {
 									for _, bn := range v.Nodes {
 										if bn.Host != node.Host || bn.Port != node.Port {
-											for _, dbname := range v.Databases {
+											for dbname := range v.Databases.Iter() {
 												log.Println("Adding node", bn.Host+":"+strconv.Itoa(bn.Port), " to server ", node.Host+":"+strconv.Itoa(node.Port))
 												data := CmdSubstitutions{
-													DATABASE:    dbname,
+													DATABASE:    dbname.(string),
 													SERVER_IP:   node.Host,
 													SERVER_PORT: strconv.Itoa(node.Port),
 													HOSTNAME:    bn.Host,
 													PORT:        strconv.Itoa(bn.Port),
 												}
-												cmd, err := cmd(v.Action.Add, data)
+												command, err := cmd(v.Action.Add, data)
 												if err != nil {
 													log.Printf(r.Node.Value)
 													log.Printf(err.Error())
 													panic(err)
 												}
-												out, err := run(cmd)
+												out, err := run(command)
 												if err != nil {
 													log.Println("Command failed:")
-													log.Printf("exec: %s\n", cmd.String())
+													log.Printf("exec: %s\n", command.String())
 													log.Println(out)
 													log.Println(err.Error())
 												}
@@ -163,6 +282,7 @@ func processUpdate(r etcd.Response) {
 								log.Printf(r.Node.Value)
 								log.Printf(err.Error())
 								panic(err)
+								log.Println("Failed to read json '", r.Node.Value, "' error: ", err.Error())
 							}
 							v.Nodes[r.Node.Key] = node.Node{Port: entry.Port, Host: entry.Host, Key: r.Node.Key}
 						}
@@ -176,6 +296,8 @@ func processUpdate(r etcd.Response) {
 			log.Println("There is no active actions for hosts update")
 		}
 	}
+
+	return nil
 }
 
 func getNodes(etcdPath string) (node.NodeSlice, error) {
@@ -265,10 +387,10 @@ func loadConfig() {
 				log.Println("Error: there is no databases configured for action ", action.Key)
 				continue
 			}
-			var databases []string
+			databases := mapset.NewSet()
 			for _, db := range resp.Node.Nodes {
 				if db.Dir == false {
-					databases = append(databases, nodeName(db))
+					databases.Add(db)
 				}
 			}
 
@@ -286,7 +408,7 @@ func loadConfig() {
 				continue
 			}
 
-			Registry[nodeName(action)] = Actions{
+			Registry[nodeName(action)] = &Actions{
 				Action:    n,
 				Databases: databases, // Active databases
 				Nodes:     nodes,
@@ -345,7 +467,7 @@ var (
 	etcdKeyPrefix string
 	client        *etcd.Client
 	WatchChan     chan *etcd.Response
-	Registry      map[string]Actions
+	Registry      map[string]*Actions
 )
 
 const (
@@ -355,7 +477,7 @@ const (
 )
 
 func main() {
-	Registry = make(map[string]Actions)
+	Registry = make(map[string]*Actions)
 
 	flag.StringVar(&etcdUrl, "etcd", "http://127.0.0.1:4001", "Etcd url")
 	flag.StringVar(&etcdKeyPrefix, "etcd-key-prefix", "/couchdb-mng", "Keyspace for data in etcd")

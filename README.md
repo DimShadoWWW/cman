@@ -44,5 +44,5 @@ couchdb-manager -etcd="http://192.168.0.10:4001"
 # **DATABASE** CourchDB database to synchronize
 # **SERVER_IP** CourchDB ipaddress to connect
 # **SERVER_PORT** CouchDB port to connect
-# **HOSTNAME** New CouchDB node's ip address
-# **PORT** New CouchDB node's port
+# **HOSTNAME** Remote CouchDB ip address
+# **PORT** Remote CouchDB port

@@ -35,9 +35,9 @@ couchdb-manager -etcd="http://192.168.0.10:4001"
 }
 ```
 
-# **Key** etcd path to watch (skydns host)
-# **Add** command to run to add a new node
-# **Del** command to run to remove a node
+# **Key** etcd path to watch (skydns host).
+# **Add** command to run to add a new node. Using go's template syntax.
+# **Del** command to run to remove a node. Using go's template syntax.
 
 #### Variables ####
 

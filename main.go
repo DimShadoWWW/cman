@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -8,9 +9,11 @@ import (
 	"github.com/coreos/go-etcd/etcd"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
+	"text/template"
 )
 
 type ActionCfg struct {
@@ -25,20 +28,29 @@ type Actions struct {
 	Nodes     node.NodeSlice // Active Nodes
 }
 
-func run(command string, dbname string, nodeAddress string, nodePort int, serverAddress string, serverPort int) (string, error) {
-	cmd := strings.Replace(
-		strings.Replace(
-			strings.Replace(
-				strings.Replace(
-					strings.Replace(
-						command,
-						"DATABASE", dbname, -1),
-					"SERVER_IP", serverAddress, -1),
-				"SERVER_PORT", strconv.Itoa(serverPort), -1),
-			"HOSTNAME", nodeAddress, -1),
-		"PORT", strconv.Itoa(nodePort), -1)
-	log.Printf("Running: %s\n", cmd)
-	return cmd, nil
+type CmdSubstitutions struct {
+	DATABASE    string
+	SERVER_IP   string
+	SERVER_PORT string
+	HOSTNAME    string
+	PORT        string
+}
+
+func run(cmd bytes.Buffer) (string, error) {
+	out, err := sh.Command("sleep", "3").SetTimeout(3 * time.Second).Output()
+	return string(out), err
+}
+
+func cmd(command string, data CmdSubstitutions) (bytes.Buffer, error) {
+	cmd := template.Must(template.New("command").Parse(command))
+	var script bytes.Buffer
+
+	err := cmd.Execute(&script, data)
+	if err != nil {
+		log.Println("Failed command template substitution:", err)
+	}
+	log.Printf("Running: %s\n", script)
+	return script, nil
 }
 
 func processUpdate(r etcd.Response) {
@@ -82,12 +94,24 @@ func processUpdate(r etcd.Response) {
 												if bn.Host != node.Host || bn.Port != node.Port {
 													for _, dbname := range v.Databases {
 														log.Println("Removing node", bn.Host+":"+strconv.Itoa(bn.Port), " from server ", node.Host+":"+strconv.Itoa(node.Port))
-														cmd, err := run(v.Action.Del, dbname, bn.Host, bn.Port, node.Host, node.Port)
+														data := CmdSubstitutions{
+															DATABASE:    dbname,
+															SERVER_IP:   node.Host,
+															SERVER_PORT: strconv.Itoa(node.Port),
+															HOSTNAME:    bn.Host,
+															PORT:        strconv.Itoa(bn.Port),
+														}
+														cmd, err := cmd(v.Action.Del, data)
 														if err != nil {
 															log.Printf(r.Node.Value)
 															log.Printf(err.Error())
 														}
-														log.Println(cmd)
+														out, err := run(cmd)
+														if err != nil {
+															log.Println("Command failed:")
+															log.Printf("exec: %s\n", cmd.String())
+															log.Println(err.Error())
+														}
 													}
 												}
 											}
@@ -106,13 +130,25 @@ func processUpdate(r etcd.Response) {
 										if bn.Host != node.Host || bn.Port != node.Port {
 											for _, dbname := range v.Databases {
 												log.Println("Adding node", bn.Host+":"+strconv.Itoa(bn.Port), " to server ", node.Host+":"+strconv.Itoa(node.Port))
-												cmd, err := run(v.Action.Add, dbname, bn.Host, bn.Port, node.Host, node.Port)
+												data := CmdSubstitutions{
+													DATABASE:    dbname,
+													SERVER_IP:   node.Host,
+													SERVER_PORT: strconv.Itoa(node.Port),
+													HOSTNAME:    bn.Host,
+													PORT:        strconv.Itoa(bn.Port),
+												}
+												cmd, err := cmd(v.Action.Add, data)
 												if err != nil {
 													log.Printf(r.Node.Value)
 													log.Printf(err.Error())
 													panic(err)
 												}
-												log.Println(cmd)
+												out, err := run(cmd)
+												if err != nil {
+													log.Println("Command failed:")
+													log.Printf("exec: %s\n", cmd.String())
+													log.Println(err.Error())
+												}
 											}
 										}
 									}

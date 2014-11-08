@@ -38,7 +38,7 @@ type CmdSubstitutions struct {
 }
 
 func run(cmd bytes.Buffer) (string, error) {
-	out, err := sh.Command(cmd).SetTimeout(3 * time.Second).Output()
+	out, err := sh.Command(cmd.Bytes()...).SetTimeout(3 * time.Second).Output()
 	return string(out), err
 }
 

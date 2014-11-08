@@ -8,7 +8,7 @@ import (
 
 func TestRun(t *testing.T) {
 	Convey("Creating a command for values", t, func() {
-		cmd := "add {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}}"
+		command := "add {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}}"
 		nodeAddress := "node1"
 		nodePort := 2222
 		serverAddress := "node2"
@@ -22,7 +22,7 @@ func TestRun(t *testing.T) {
 			HOSTNAME:    nodeAddress,
 			PORT:        strconv.Itoa(nodePort),
 		}
-		output, _ := cmd(cmd, data)
+		output, _ := cmd(command, data)
 
 		Convey("The command should be equal", func() {
 			So(string(output), ShouldEqual, "add db1 -s node2:1111 -h node1 -p 2222")
@@ -32,7 +32,7 @@ func TestRun(t *testing.T) {
 
 func TestRun2(t *testing.T) {
 	Convey("Creating a command for values", t, func() {
-		cmd := "del {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}}"
+		command := "del {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}}"
 		nodeAddress := "node1"
 		nodePort := 2222
 		serverAddress := "node2"
@@ -46,7 +46,7 @@ func TestRun2(t *testing.T) {
 			HOSTNAME:    nodeAddress,
 			PORT:        strconv.Itoa(nodePort),
 		}
-		output, _ := cmd(cmd, data)
+		output, _ := cmd(command, data)
 
 		Convey("The command should be equal", func() {
 			So(string(output), ShouldEqual, "del db1 -s node2:1111 -h node1 -p 2222")

@@ -1,10 +1,12 @@
 image: bradrydzewski/go:1.3
 cache:
   - /go/src/github.com/codeskyblue/go-sh
+  - /go/src/github.com/deckarep/golang-set
   - /go/src/github.com/coreos/go-etcd
   - /go/src/github.com/couchbaselabs/go-couchbase
   - /go/src/github.com/smartystreets/goconvey
 script:
+  - go get -u github.com/deckarep/golang-set
   - go get -u github.com/codeskyblue/go-sh
   - go get -u github.com/coreos/go-etcd/etcd
   - go get -u github.com/couchbaselabs/go-couchbase

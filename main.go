@@ -38,15 +38,16 @@ type CmdSubstitutions struct {
 }
 
 func run(cmd bytes.Buffer) (string, error) {
-	out, err := sh.Command(cmd.Bytes()...).SetTimeout(3 * time.Second).Output()
+	cmds := strings.Split(cmd.String(), " ")
+	out, err := sh.Command(cmds[0], cmds[1:]).SetTimeout(3 * time.Second).Output()
 	return string(out), err
 }
 
 func cmd(command string, data CmdSubstitutions) (bytes.Buffer, error) {
-	cmd := template.Must(template.New("command").Parse(command))
+	c := template.Must(template.New("command").Parse(command))
 	var script bytes.Buffer
 
-	err := cmd.Execute(&script, data)
+	err := c.Execute(&script, data)
 	if err != nil {
 		log.Println("Failed command template substitution:", err)
 	}
@@ -111,6 +112,7 @@ func processUpdate(r etcd.Response) {
 														if err != nil {
 															log.Println("Command failed:")
 															log.Printf("exec: %s\n", cmd.String())
+															log.Println(out)
 															log.Println(err.Error())
 														}
 													}
@@ -148,6 +150,7 @@ func processUpdate(r etcd.Response) {
 												if err != nil {
 													log.Println("Command failed:")
 													log.Printf("exec: %s\n", cmd.String())
+													log.Println(out)
 													log.Println(err.Error())
 												}
 											}

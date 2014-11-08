@@ -1,8 +1,8 @@
 package main
 
 import (
-	// "github.com/coreos/go-etcd/etcd"
 	. "github.com/smartystreets/goconvey/convey"
+	"strconv"
 	"testing"
 )
 
@@ -25,7 +25,7 @@ func TestRun(t *testing.T) {
 		output, _ := cmd(cmd, data)
 
 		Convey("The command should be equal", func() {
-			So(output, ShouldEqual, "add db1 -s node2:1111 -h node1 -p 2222")
+			So(string(output), ShouldEqual, "add db1 -s node2:1111 -h node1 -p 2222")
 		})
 	})
 }
@@ -49,7 +49,7 @@ func TestRun2(t *testing.T) {
 		output, _ := cmd(cmd, data)
 
 		Convey("The command should be equal", func() {
-			So(output, ShouldEqual, "del db1 -s node2:1111 -h node1 -p 2222")
+			So(string(output), ShouldEqual, "del db1 -s node2:1111 -h node1 -p 2222")
 		})
 	})
 }

@@ -30,8 +30,8 @@ couchdb-manager -etcd="http://192.168.0.10:4001"
 ```json
 {
     "Key": "/skydns/local/coreos1/docker/deliver",
-    "Add": "add -s SERVER_IP:SERVER_PORT -h HOSTNAME -p PORT",
-    "Del": "del -s SERVER_IP:SERVER_PORT -h HOSTNAME -p PORT"
+    "Add": "add {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}",
+    "Del": "del {{.DATABASE}} -s {{.SERVER_IP}}:{{.SERVER_PORT}} -h {{.HOSTNAME}} -p {{.PORT}"
 }
 ```
 

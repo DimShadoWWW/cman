@@ -6,14 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"github.com/DimShadoWWW/cman/node"
+	"github.com/codeskyblue/go-sh"
 	"github.com/coreos/go-etcd/etcd"
 	"log"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
 type ActionCfg struct {
@@ -37,7 +38,7 @@ type CmdSubstitutions struct {
 }
 
 func run(cmd bytes.Buffer) (string, error) {
-	out, err := sh.Command("sleep", "3").SetTimeout(3 * time.Second).Output()
+	out, err := sh.Command(cmd).SetTimeout(3 * time.Second).Output()
 	return string(out), err
 }
 

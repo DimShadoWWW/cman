@@ -20,7 +20,7 @@ publish:
       - go build
     artifacts:
       - cman
-    tag: v$(git log --pretty=format:'%h' --abbrev-commit HEAD|head -n 1)
+    tag: v$(git branch -q|cut -d ' ' -f 2)-$(git log --pretty=format:'%h' --abbrev-commit HEAD|head -n 1)
     token: {{github_token}}
     user: drone
     repo: drone

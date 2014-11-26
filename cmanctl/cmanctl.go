@@ -9,6 +9,7 @@ import (
 )
 
 type Add struct {
+	ID         string `json:"_id"`
 	Source     string `json:"source"`
 	Target     string `json:"target"`
 	Continuous bool   `json:"continuous"`
@@ -28,11 +29,10 @@ func (a *Add) Id() string {
 }
 
 type ActionCfg struct {
-	Key       string   `json:"Key"`       // Etcd key to look for couchdb nodes
-	PutCmd    []string `json:"PutCmd"`    // Command to run to add
-	PostCmd   []string `json:"PostCmd"`   // Command to run to add
-	DeleteCmd []string `json:"DeleteCmd"` // Command to run to delete
-	Add       Add      `json:"Add"`       // Command's params to add replication
+	Key      string `json:"Key"`      // Etcd key to look for couchdb nodes
+	Add      Add    `json:"Add"`      // Command's params to add replication
+	Username string `json:"Username"` // Command's params to add replication
+	Password string `json:"Password"` // Command's params to add replication
 }
 
 func addAction(name, config string) error {
@@ -62,9 +62,6 @@ func main() {
 
 	var action ActionCfg
 	action.Key = "/skydns/local/home/production/couchdb"
-	action.PutCmd = []string{"/usr/bin/curl", "-X", "PUT"}
-	action.PostCmd = []string{"/usr/bin/curl", "--trace", "/home/core/curl_trace", "-X", "POST", "-H", "\"Content-Type: application/json\""}
-	action.DeleteCmd = []string{"/usr/bin/curl", "-X", "DELETE"}
 	action.Add.Source = "http://{{.HOSTNAME}}:{{.PORT}}/{{.DATABASE}}"
 	action.Add.Target = "http://{{if .AUTH}}{{.AUTH}}{{end}}{{.SERVER_IP}}:{{.SERVER_PORT}}/{{.DATABASE}}"
 	action.Add.Continuous = true

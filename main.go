@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/DimShadoWWW/cman/node"
-	"github.com/codeskyblue/go-sh"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/deckarep/golang-set"
 	"github.com/fjl/go-couchdb"
@@ -18,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
-	"time"
 )
 
 type Add struct {
@@ -66,13 +64,10 @@ func (a *Add) Id(dbname, hostname, port string) string {
 }
 
 type ActionCfg struct {
-	Key       string   `json:"Key"`       // Etcd key to look for couchdb nodes
-	PutCmd    []string `json:"PutCmd"`    // Command to run to add
-	PostCmd   []string `json:"PostCmd"`   // Command to run to add
-	DeleteCmd []string `json:"DeleteCmd"` // Command to run to delete
-	Add       Add      `json:"Add"`       // Command's params to add replication
-	Username  string   `json:"Username"`  // Command's params to add replication
-	Password  string   `json:"Password"`  // Command's params to add replication
+	Key      string `json:"Key"`      // Etcd key to look for couchdb nodes
+	Add      Add    `json:"Add"`      // Command's params to add replication
+	Username string `json:"Username"` // Command's params to add replication
+	Password string `json:"Password"` // Command's params to add replication
 }
 
 type Actions struct {
@@ -235,39 +230,6 @@ func DelReplication(action Actions, dbname, origHost, origPort, destHost, destPo
 	}
 }
 
-func run(cmd []string) (string, error) {
-	log.Printf("Executing: %#v\n", cmd)
-	out, err := sh.Command(cmd[0], cmd[1:len(cmd)]).SetTimeout(3 * time.Second).Output()
-	return string(out), err
-}
-
-func cmd(command []string, data CmdSubstitutions) ([]string, error) {
-	var comm []string
-
-	for _, cm := range command {
-		var script bytes.Buffer
-
-		templ, err := template.New("command").Parse(cm)
-		if err != nil {
-			log.Println("Failed to load template from action configuration: ", err)
-		}
-
-		c := template.Must(templ, err)
-		if err != nil {
-			log.Println("Failed to load template from action configuration: ", err)
-		}
-
-		err = c.Execute(&script, data)
-		if err != nil {
-			log.Println("Failed command template substitution:", err)
-		}
-
-		comm = append(comm, script.String())
-	}
-	log.Printf("Running: %s\n", comm)
-	return comm, nil
-}
-
 func processUpdate(r etcd.Response) error {
 
 	log.Println("Processing update")
@@ -279,11 +241,6 @@ func processUpdate(r etcd.Response) error {
 		log.Println(err)
 		return err
 	}
-
-	// databasesRegexp, err := regexp.Compile(etcdKeyPrefix + "/config/([a-zA-Z0-9_]+)/databases/([a-zA-Z0-9_]+)")
-	// if err == nil {
-	// 	return err
-	// }
 
 	log.Println("Checking update")
 	// If it was inside the configuration
@@ -398,49 +355,6 @@ func processUpdate(r etcd.Response) error {
 							rh := Registry[actionName].Nodes[comb[1]] // remote CouchDB for syncronization
 							CheckOrCreateDB(*Registry[actionName], rh)
 							AddReplication(*Registry[actionName], databaseName, rh.Host, strconv.Itoa(rh.Port), lh.Host, strconv.Itoa(lh.Port))
-
-							// log.Println("Adding database ", databaseName, " to server ", lh.Host+":"+strconv.Itoa(lh.Port))
-							// data := CmdSubstitutions{
-							// 	DATABASE:    databaseName,
-							// 	SERVER_IP:   lh.Host,
-							// 	SERVER_PORT: strconv.Itoa(lh.Port),
-							// 	HOSTNAME:    rh.Host,
-							// 	PORT:        strconv.Itoa(rh.Port),
-							// }
-
-							// // Force DB creation
-
-							// fmt.Println("Checking or creatind remote database ", databaseName, " on ", lh.Host, ":", strconv.Itoa(lh.Port))
-							// to_execute := append(Registry[actionName].Action.PutCmd, Registry[actionName].Action.Add.Source)
-							// command, err := cmd(to_execute, data)
-							// if err != nil {
-							// 	log.Printf(r.Node.Value)
-							// 	log.Printf(err.Error())
-							// }
-							// out, err := run(command)
-							// if err != nil {
-							// 	log.Println("Command failed:")
-							// 	log.Println("exec: ", strings.Join(command, " "))
-							// 	log.Println(out)
-							// 	log.Println(err.Error())
-							// } else {
-							// 	log.Println(out)
-							// }
-							// to_execute = append(Registry[actionName].Action.PostCmd, "-d", Registry[actionName].Action.Add.String(), "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/_replicate/"+Registry[actionName].Action.Add.IdTmpl())
-							// command, err = cmd(to_execute, data)
-							// if err != nil {
-							// 	log.Printf(r.Node.Value)
-							// 	log.Printf(err.Error())
-							// }
-							// out, err = run(command)
-							// if err != nil {
-							// 	log.Println("Command failed:")
-							// 	log.Println("exec: ", strings.Join(command, " "))
-							// 	log.Println(out)
-							// 	log.Println(err.Error())
-							// } else {
-							// 	log.Println(out)
-							// }
 						}
 					} else {
 						Registry[actionName].Databases.Remove(databaseName)
@@ -451,29 +365,6 @@ func processUpdate(r etcd.Response) error {
 
 							log.Println("Removing database ", databaseName, " from server ", lh.Host+":"+strconv.Itoa(lh.Port))
 							DelReplication(*Registry[actionName], databaseName, rh.Host, strconv.Itoa(rh.Port), lh.Host, strconv.Itoa(lh.Port))
-
-							// data := CmdSubstitutions{
-							// 	DATABASE:    databaseName,
-							// 	SERVER_IP:   lh.Host,
-							// 	SERVER_PORT: strconv.Itoa(lh.Port),
-							// 	HOSTNAME:    rh.Host,
-							// 	PORT:        strconv.Itoa(rh.Port),
-							// }
-							// to_execute := append(Registry[actionName].Action.DeleteCmd, "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/_replicate/", Registry[actionName].Action.Add.IdTmpl())
-							// command, err := cmd(to_execute, data)
-							// if err != nil {
-							// 	log.Printf(r.Node.Value)
-							// 	log.Printf(err.Error())
-							// }
-							// out, err := run(command)
-							// if err != nil {
-							// 	log.Println("Command failed:")
-							// 	log.Println("exec: ", strings.Join(command, " "))
-							// 	log.Println(out)
-							// 	log.Println(err.Error())
-							// } else {
-							// 	log.Println(out)
-							// }
 						}
 					}
 				}
@@ -510,29 +401,6 @@ func processUpdate(r etcd.Response) error {
 													for dbname := range v.Databases.Iter() {
 														log.Println("Removing node", bn.Host+":"+strconv.Itoa(bn.Port), " from server ", node.Host+":"+strconv.Itoa(node.Port))
 														DelReplication(*v, nodeName(dbname.(*etcd.Node)), bn.Host, strconv.Itoa(bn.Port), node.Host, strconv.Itoa(node.Port))
-
-														// data := CmdSubstitutions{
-														// 	DATABASE:    nodeName(dbname.(*etcd.Node)),
-														// 	SERVER_IP:   node.Host,
-														// 	SERVER_PORT: strconv.Itoa(node.Port),
-														// 	HOSTNAME:    bn.Host,
-														// 	PORT:        strconv.Itoa(bn.Port),
-														// }
-														// to_execute := append(v.Action.DeleteCmd, "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/_replicate/"+v.Action.Add.IdTmpl())
-														// command, err := cmd(to_execute, data)
-														// if err != nil {
-														// 	log.Printf(r.Node.Value)
-														// 	log.Printf(err.Error())
-														// }
-														// out, err := run(command)
-														// if err != nil {
-														// 	log.Println("Command failed:")
-														// 	log.Println("exec: ", strings.Join(command, " "))
-														// 	log.Println(out)
-														// 	log.Println(err.Error())
-														// } else {
-														// 	log.Println(out)
-														// }
 													}
 												}
 											}
@@ -566,78 +434,6 @@ func processUpdate(r etcd.Response) error {
 													AddReplication(*v, nodeName(dbname.(*etcd.Node)), bn.Host, strconv.Itoa(bn.Port), node.Host, strconv.Itoa(node.Port))
 													// reverse
 													AddReplication(*v, nodeName(dbname.(*etcd.Node)), node.Host, strconv.Itoa(node.Port), bn.Host, strconv.Itoa(bn.Port))
-
-													// // Force DB creation
-													// fmt.Printf("dbname %#v\n", dbname)
-													// fmt.Printf("nodeName(dbname.(*etcd.Node)) %#v\n", nodeName(dbname.(*etcd.Node)))
-													// d := CmdSubstitutions{
-													// 	DATABASE:    nodeName(dbname.(*etcd.Node)),
-													// 	SERVER_IP:   node.Host,
-													// 	SERVER_PORT: strconv.Itoa(node.Port),
-													// }
-
-													// fmt.Println("Checking or creating remote database ", nodeName(dbname.(*etcd.Node)), " on ", entry.Host, ":", strconv.Itoa(entry.Port))
-
-													// to_execute := append(v.Action.PutCmd, "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/{{.DATABASE}}")
-													// command, err := cmd(to_execute, d)
-													// if err != nil {
-													// 	log.Printf(r.Node.Value)
-													// 	log.Printf(err.Error())
-													// }
-													// out, err := run(command)
-													// if err == nil {
-													// 	log.Println("Database created")
-													// }
-
-													// // synchronization
-													// log.Println("Adding node", bn.Host+":"+strconv.Itoa(bn.Port), " to server ", node.Host+":"+strconv.Itoa(node.Port))
-													// data := CmdSubstitutions{
-													// 	DATABASE:    nodeName(dbname.(*etcd.Node)),
-													// 	SERVER_IP:   node.Host,
-													// 	SERVER_PORT: strconv.Itoa(node.Port),
-													// 	HOSTNAME:    bn.Host,
-													// 	PORT:        strconv.Itoa(bn.Port),
-													// }
-													// to_execute = append(v.Action.PostCmd, "-d", v.Action.Add.String(), "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/_replicate/"+v.Action.Add.IdTmpl())
-													// command, err = cmd(to_execute, data)
-													// if err != nil {
-													// 	log.Printf(r.Node.Value)
-													// 	log.Printf(err.Error())
-													// }
-													// out, err = run(command)
-													// if err != nil {
-													// 	log.Println("Command failed:")
-													// 	log.Println("exec: ", strings.Join(command, " "))
-													// 	log.Println(out)
-													// 	log.Println(err.Error())
-													// } else {
-													// 	log.Println(out)
-													// }
-
-													// // reverse
-													// log.Println("Adding node", bn.Host+":"+strconv.Itoa(bn.Port), " to server ", node.Host+":"+strconv.Itoa(node.Port))
-													// data = CmdSubstitutions{
-													// 	DATABASE:    nodeName(dbname.(*etcd.Node)),
-													// 	SERVER_IP:   bn.Host,
-													// 	SERVER_PORT: strconv.Itoa(bn.Port),
-													// 	HOSTNAME:    node.Host,
-													// 	PORT:        strconv.Itoa(node.Port),
-													// }
-													// to_execute = append(v.Action.PostCmd, "-d", v.Action.Add.String(), "http://{{.SERVER_IP}}:{{.SERVER_PORT}}/_replicate/"+v.Action.Add.IdTmpl())
-													// command, err = cmd(to_execute, data)
-													// if err != nil {
-													// 	log.Printf(r.Node.Value)
-													// 	log.Printf(err.Error())
-													// }
-													// out, err = run(command)
-													// if err != nil {
-													// 	log.Println("Command failed:")
-													// 	log.Println("exec: ", strings.Join(command, " "))
-													// 	log.Println(out)
-													// 	log.Println(err.Error())
-													// } else {
-													// 	log.Println(out)
-													// }
 												}
 											}
 										}
@@ -649,12 +445,6 @@ func processUpdate(r etcd.Response) error {
 								}
 								v.Nodes[r.Node.Key] = node.Node{Port: entry.Port, Host: entry.Host, Key: r.Node.Key}
 							}
-							// Registry = make(map[string]*Actions)
-							// mm, ok := v.Nodes[r.Node.Key]
-							// if !ok {
-							// 	mm = make(map[string]int)
-							// 	m[path] = mm
-							// }
 						}
 					} else {
 						log.Println("Error retrieving node list for key '", parentNodeKey(r.Node.Key), "': ", err.Error())
@@ -680,7 +470,6 @@ func getNodes(etcdPath string) (node.NodeSlice, error) {
 			log.Println("Reconnecting to etcd ", etcdUrl)
 			client = etcd.NewClient([]string{etcdUrl})
 		}
-		// log.Println(err)
 		return nil, err
 	}
 
@@ -769,14 +558,12 @@ func loadConfig() {
 			nodes, err := getNodes(n.Key)
 			if err != nil {
 				log.Println("Info: there are no hosts for", nodeName(action))
-				// continue
 			}
 
 			Registry[nodeName(action)] = &Actions{
 				Action:    n,
 				Databases: databases, // Active databases
 				Nodes:     nodes,
-				// Hosts:     resp.Node.Nodes,
 			}
 		}
 	}

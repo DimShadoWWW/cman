@@ -9,7 +9,6 @@ script:
   - go get -u github.com/fjl/go-couchdb
   - go get -u github.com/coreos/go-etcd/etcd
   - go get -u github.com/smartystreets/goconvey
-  - go test
   - go build
 publish:
   github:

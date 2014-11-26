@@ -10,17 +10,17 @@ script:
   - go get -u github.com/coreos/go-etcd/etcd
   - go get -u github.com/smartystreets/goconvey
   - go build
-publish:
-  github:
-    branch: master
-    script:
-      - go build
-    artifacts:
-      - cman
-    tag: v$(git branch -q|cut -d ' ' -f 2)-$(git log --pretty=format:'%h' --abbrev-commit HEAD|head -n 1)
-    token: {{github_token}}
-    user: drone
-    repo: drone
+#publish:
+#  github:
+#    branch: master
+#    script:
+#      - go build
+#    artifacts:
+#      - cman
+#    tag: v$(git branch -q|cut -d ' ' -f 2)-$(git log --pretty=format:'%h' --abbrev-commit HEAD|head -n 1)
+#    token: {{github_token}}
+#    user: drone
+#    repo: drone
 notify:
   email:
     recipients:
